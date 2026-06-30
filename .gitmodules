@@ -1,0 +1,18 @@
+[submodule "third_party/clap"]
+	path = third_party/clap
+	url = https://github.com/free-audio/clap
+[submodule "third_party/clap-helpers"]
+	path = third_party/clap-helpers
+	url = https://github.com/free-audio/clap-helpers
+[submodule "third_party/clap-wrapper"]
+	path = third_party/clap-wrapper
+	url = https://github.com/free-audio/clap-wrapper
+[submodule "third_party/IADSP"]
+	path = third_party/IADSP
+	url = https://github.com/IcebreakerAudio/IADSP
+[submodule "third_party/visage"]
+	path = third_party/visage
+	url = https://github.com/VitalAudio/visage
+[submodule "third_party/FFTConvolver"]
+	path = third_party/FFTConvolver
+	url = https://github.com/HiFi-LoFi/FFTConvolver.git
