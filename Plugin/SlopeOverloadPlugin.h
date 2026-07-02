@@ -3,7 +3,10 @@
 #include <array>
 #include <clap/helpers/plugin.hh>
 
+#include "DeltaModulation.h"
+#include "IA_Utilities/CrossfadeMixer.hpp"
 #include "Parameter.h"
+#include "Speaker.h"
 
 using SlopeOverloadPluginBase =
     clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate, clap::helpers::CheckingLevel::Maximal>;
@@ -43,7 +46,11 @@ protected:
 
     // clap_plugin_latency
     bool implementsLatency() const noexcept override { return true; }
-    uint32_t latencyGet() const noexcept override { return 0; }
+    uint32_t latencyGet() const noexcept override { return static_cast<uint32_t>(dpcm.getLatencySamples()); }
+
+    // clap_plugin (lifecycle)
+    bool activate(double sampleRate, uint32_t minFrameCount, uint32_t maxFrameCount) noexcept override;
+    void deactivate() noexcept override;
 
     clap_process_status process(const clap_process_t *process) noexcept override;
 
@@ -71,4 +78,7 @@ private:
 
     std::array<Parameter, ParamCount> _params;
     PortConfig _portConfig = PortConfig::Stereo;
+    DeltaModulation dpcm;
+    ::Speaker speaker;
+    IADSP::CrossfadeMixer<float> mixer;
 };

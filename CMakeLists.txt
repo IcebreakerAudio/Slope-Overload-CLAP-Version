@@ -23,8 +23,9 @@ add_subdirectory(third_party/clap-wrapper)
 add_subdirectory(third_party/IADSP)
 add_subdirectory(third_party/visage)
 
-# third_party/FFTConvolver has no CMakeLists.txt and isn't used until Phase 2's
-# convolution stage - its build wiring is deferred there (see TASKS.md).
+# third_party/FFTConvolver has no CMakeLists.txt of its own - cmake/FFTConvolver.cmake
+# declares its static library target from its 4 loose sources.
+include(cmake/FFTConvolver.cmake)
 
 add_subdirectory(DSP)
 add_subdirectory(Plugin)

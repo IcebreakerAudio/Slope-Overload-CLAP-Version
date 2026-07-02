@@ -3,14 +3,19 @@
 #include <clap/clap.h>
 #include <clap/helpers/host-proxy.hxx>
 #include <clap/helpers/plugin.hxx>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <cstring>
+
+#include "AudioBuffer.h"
+#include "ScopedNoDenormals.h"
 
 namespace
 {
 
 constexpr const char *kFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
+
+float dbToGain(double db) noexcept { return static_cast<float>(std::pow(10.0, db / 20.0)); }
 
 constexpr uint32_t kStateMagic = 0x31766f53;  // "Sov1"
 constexpr uint32_t kStateVersion = 1;
@@ -233,16 +238,72 @@ bool SlopeOverloadPlugin::stateLoad(const clap_istream_t *stream) noexcept
     return true;
 }
 
+bool SlopeOverloadPlugin::activate(double sampleRate, uint32_t, uint32_t maxFrameCount) noexcept
+{
+    const int numChannels = _portConfig == PortConfig::Mono ? 1 : 2;
+    dpcm.initialize(sampleRate, static_cast<int>(maxFrameCount), numChannels);
+    speaker.initialize(sampleRate, static_cast<int>(maxFrameCount), numChannels);
+
+    mixer.prepare(sampleRate, static_cast<int>(maxFrameCount), numChannels);
+    mixer.setLatencyCompensation(dpcm.getLatencySamples());
+    if (_host.canUseLatency())
+    {
+        _host.latencyChanged();
+    }
+
+    return true;
+}
+
+void SlopeOverloadPlugin::deactivate() noexcept
+{
+    dpcm.reset();
+    mixer.reset();
+}
+
 clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) noexcept
 {
+    const ScopedNoDenormals noDenormals;
+
     drainParamEvents(process->in_events);
 
-    const uint32_t channelCount = process->audio_outputs[0].channel_count;
-    for (uint32_t channel = 0; channel < channelCount; ++channel)
+    const AudioBuffer input(process->audio_inputs[0].data32, process->audio_inputs[0].channel_count,
+                             process->frames_count);
+    AudioBuffer output(process->audio_outputs[0].data32, process->audio_outputs[0].channel_count,
+                        process->frames_count);
+    output.copyFrom(input);
+
+    mixer.pushFirstSignal(output.data(), static_cast<int>(output.numFrames()));
+
+    dpcm.setAntiAliasing(findParam(ParamIndex::AAFilt)->value() >= 0.5);
+    dpcm.setSampleRateIndex(static_cast<int>(std::lround(findParam(ParamIndex::SRate)->value())));
+
+    const auto inGain = dbToGain(findParam(ParamIndex::InGain)->value());
+    const auto outGain = dbToGain(findParam(ParamIndex::OutGain)->value());
+
+    for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
     {
-        std::memcpy(process->audio_outputs[0].data32[channel], process->audio_inputs[0].data32[channel],
-                    sizeof(float) * process->frames_count);
+        for (auto &s : output.channel(ch))
+        {
+            s *= inGain;
+        }
     }
+
+    dpcm.process(output);
+
+    const auto speakerChoice = static_cast<int>(std::lround(findParam(ParamIndex::Speaker)->value())) - 1;
+    speaker.setSpeaker(speakerChoice);
+    speaker.process(output);
+
+    for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
+    {
+        for (auto &s : output.channel(ch))
+        {
+            s *= outGain;
+        }
+    }
+
+    mixer.setMix(findParam(ParamIndex::Active)->value() >= 0.5 ? 1.0f : 0.0f);
+    mixer.mixSecondSignal(output.data(), static_cast<int>(output.numFrames()));
 
     return CLAP_PROCESS_CONTINUE;
 }

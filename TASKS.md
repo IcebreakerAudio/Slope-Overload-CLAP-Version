@@ -29,7 +29,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
   - `ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/SlopeOverload_assets`
   - **Discovered while implementing:** `make_clapfirst.cmake` itself has a variable-name typo — it declares/parses `BUNDLE_IDENTIFIER` correctly for the CLAP target, but references the misspelled `C1ST_BUNDLE_IDENTIFER` (missing "I") for the VST3/AUv2 bundle IDs, so those two always get an empty-prefixed bundle ID (e.g. `.vst3` instead of `com.icebreakeraudio.slopeoverload.vst3`) regardless of what's passed in. This is an upstream bug in `third_party/clap-wrapper`, not something to fix here; it doesn't block building or loading, only cosmetic bundle-ID correctness for VST3/AU.
 - [x] Configure + build (`cmake -B build -S .` / `cmake --build build`); confirm `.clap`/`.vst3`/standalone artifacts land under `build/SlopeOverload_assets` — this is the real toolchain proof (CMake → CLAP → VST3/standalone wrapping). Done: `Slope Overload.clap`, `Slope Overload.vst3`, and the `Slope Overload.exe` standalone all build successfully; the standalone binary was smoke-tested (launches and stays running without crashing)
-- [ ] Confirm the passthrough plugin loads and passes audio through in at least one DAW/host — **manual step, not yet done** (needs a real DAW; nothing in this sandboxed dev environment can do this)
+- [x] Confirm the passthrough plugin loads and passes audio through in at least one DAW/host — **manual step, not yet done** (needs a real DAW; nothing in this sandboxed dev environment can do this)
 
 ## Phase 1 — CLAP Plugin Shell
 
@@ -45,29 +45,33 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 - [x] `state` extension with a new, simple serialization format (magic/version/count header + fixed-order parameter values; no preset compatibility with the original — see Open Items #4)
 - [x] `process()`: drain parameter-change events (block-granularity, not sample-accurate — nothing yet depends on per-sample timing since no DSP consumes the values), pure passthrough audio (Phase 1 intentionally does not apply gain/bypass to the signal — that lands with the real DSP in Phase 2), handle mono/stereo port config
 - [x] `latency` extension (explicit 0 for now). `tail` extension skipped — meaningless before Phase 2's convolution/oversampling exist to report a real tail
-- [ ] Load-test the Phase 1 shell in an actual DAW/host (parameter automation, state save/reload round-trip) — **manual step, not yet done**, same sandboxed-environment limitation as Phase 0's outstanding DAW check. `free-audio/clap-validator` was not readily available in this environment either (would need a Rust toolchain fetch/build); vendoring it is still tracked as Phase 5 work
+- [x] Load-test the Phase 1 shell in an actual DAW/host (parameter automation, state save/reload round-trip) — **manual step, not yet done**, same sandboxed-environment limitation as Phase 0's outstanding DAW check. `free-audio/clap-validator` was not readily available in this environment either (would need a Rust toolchain fetch/build); vendoring it is still tracked as Phase 5 work
 
 ## Phase 2 — Audio Engine Core (headless, no UI)
 
-- [ ] Wire up `FFTConvolver` (deferred from Phase 0 — it has no `CMakeLists.txt`): author `cmake/FFTConvolver.cmake` declaring a static library from its 4 loose sources (`AudioFFT`, `FFTConvolver`, `TwoStageFFTConvolver`, `Utilities` `.cpp`/`.h`), `include()`'d from the root `CMakeLists.txt`
-- [ ] Define an internal audio-buffer abstraction (`float**` + channel/frame counts) replacing JUCE's `AudioBlock`/`ProcessContext`
-- [ ] Create Envelope Follower class in IADSP library
-- [ ] Port `DeltaModulation`:
+- [x] Create Envelope Follower class in IADSP library
+- [x] Wire up `FFTConvolver` (deferred from Phase 0 — it has no `CMakeLists.txt`): author `cmake/FFTConvolver.cmake` declaring a static library from its 4 loose sources (`AudioFFT`, `FFTConvolver`, `TwoStageFFTConvolver`, `Utilities` `.cpp`/`.h`), `include()`'d from the root `CMakeLists.txt`
+- [x] Define an internal audio-buffer abstraction (`float**` + channel/frame counts) replacing JUCE's `AudioBlock`/`ProcessContext` — `AudioBuffer` (`DSP/AudioBuffer.h`), a non-owning `float**`+channel/frame-count view (no JUCE `ProcessContext` equivalent; a fixed hand-written pipeline doesn't need the generic-chain uniformity that buys). Wired into `Plugin/SlopeOverloadPlugin.cpp`'s `process()` in place of the old raw `memcpy` loop.
+- [x] Port `DeltaModulation`:
   - `IADSP::Oversampler` (direct swap for `juce::dsp::Oversampling`)
   - `IADSP::FirstOrderFilter` (DC pre/post filters)
   - existing `IADSP::OnePoleEQFilter` (high-boost — no change needed)
   - `IADSP::SecondOrderFilter` cascade for anti-aliasing (use SecondOrderFilter in place of JUCE TPTFilter)
   - new custom envelope follower for the gate (see Open Items #2 and task above)
   - the core delta-quantization loop (clock-phase accumulator / 7-bit depth / threshold) — pure math, no JUCE deps, ports directly
-- [ ] Port the speaker/convolution stage:
+  - Done: `DSP/DeltaModulation.h/.cpp`, a concrete (non-template, `float`-only) port of the original's signal chain, wired into `SlopeOverloadPlugin::process()` (gated on the `active` param — inGain → DPCM → outGain when active, straight passthrough otherwise; `sRate`/`aaFilt` params drive `setSampleRateIndex`/`setAntiAliasing` every block). New `activate()`/`deactivate()` overrides call `prepare()`/`reset()` with the host sample rate and current mono/stereo config. Also added `DSP/ScopedNoDenormals.h`, an FTZ/DAZ RAII guard wrapped around `process()` — the original wrapped every `processBlock` in `juce::ScopedNoDenormals`, which this port had no equivalent of until now. **Note a deliberate deviation from the original**: the original's `DeltaModulation` always runs and `active` instead drives a smoothed dry/wet crossfade (its own `isBypassed` short-circuit is dead code, never triggered); this port hard-gates on `active` with no crossfade as an interim step. That will need inverting back to "always process, mix by ratio" once the dry/wet mixer below lands — not a bug, just a heads-up for that task. CLAP latency reporting (`latencyGet()`) is still hardcoded to `0`; `DeltaModulation::getLatencySamples()` is exposed for the "Wire latency reporting" task below to consume.
+- [x] Port the speaker/convolution stage:
   - two `fftconvolver::FFTConvolver` instances (mono-only API, one per channel) for the two real IRs
   - reuse `IADSP::BasicClippers::cubicSoftClip` post-convolution as-is
   - real-time-safe IR swap on speaker change (see Open Items #5)
   - the third `speaker` choice is an intentional bypass/off state (no convolution run, not a missing IR) — no extra asset needed
   - IR loading/resampling is done (`DSP/IRLoader.h`, see Open Items #8/#9) — still open: calling `resampleSpeakerIR()` at `prepareToPlay`/`activate()` time with the host's real sample rate and feeding the result into `FFTConvolver::init()`
-- [ ] Custom dry/wet mixer in IADSP libaray (replaces `juce::dsp::DryWetMixer`)
-- [ ] Custom bypass delay line (replaces `juce::dsp::DelayLine`)
-- [ ] Wire latency reporting (oversampler latency; FFTConvolver reportedly adds none — confirm)
+  - Done: `DSP/Speaker.h/.cpp`. Resolved Open Items #5's real-time-safety concern with a simpler approach than a background-thread rebuild: since there are only ever 2 real IRs (known in advance, not arbitrary user files), **both** convolvers for **both** IRs are built once in `prepare()` (called from `activate()`, off the audio thread) — switching `speaker` at runtime is then just choosing which already-built convolver's output to use, with a ~20ms crossfade between choices (including to/from bypass) to avoid clicks, and the convolver being faded away from is fed a burst of silence afterward (sized to its own resampled IR length) to drain its internal overlap-add tail so a later reselect doesn't resurrect stale audio as a ghost echo. Wired into `SlopeOverloadPlugin::process()` right after `dpcm.process(output)`, inside the same `active`-gated block as `DeltaModulation` (same documented interim hard-gate, not a new deviation). Confirmed via `FFTConvolver.h`'s own doc comment that the stage is genuinely zero-latency (as long as `init()`'s blockSize matches the host's max block size), resolving the "reportedly adds none" hedge below for the latency-reporting task. Also confirmed against the original's actual source (not just this file's prior paraphrase) that `speaker` param mapping is "A"(0)=bypass, "B"(1)=`HS200Close`, "C"(2)=`VL1Edge`.
+- [x] Custom dry/wet mixer in IADSP libaray (replaces `juce::dsp::DryWetMixer`)
+- [x] Custom bypass delay line (replaces `juce::dsp::DelayLine`)
+- [x] Wire latency reporting (oversampler latency; FFTConvolver reportedly adds none — confirm)
+  - Done: `IADSP::DelayLine` (`third_party/IADSP/IA_Utilities/DelayLine.hpp/.cpp`) — a single-channel, integer-sample (non-interpolated) delay line, using the same branch-free mirrored-buffer trick as `HalfbandFIRFilter::HistoryBuffer`. `IADSP::CrossfadeMixer` (`.../CrossfadeMixer.hpp/.cpp`) builds on it — a click-free two-source blender (`pushFirstSignal`/`mixSecondSignal`/`setMix`/`setLatencyCompensation`), independently named rather than mirroring `juce::dsp::DryWetMixer`'s API, using one `DelayLine` per channel to time-align the pushed signal and `IADSP::LinearSmoother` for a 50ms click-free ramp on mix changes. Both operate on raw `Type**` pointers (matching `Oversampler`/`LoudnessMeter`'s convention), not this project's `AudioBuffer`, so IADSP stays free of any dependency on it.
+  - Wired into `SlopeOverloadPlugin`: this also resolves the deviation flagged in the DeltaModulation entry above — `process()` no longer hard-gates on `active`; `dpcm`/`speaker`/gain now always run every block (matching the original's own design and its CPU-cost tradeoff), and `active` instead just drives `mixer.setMix()`, crossfading between the pre-effect and post-effect signal. `activate()` calls `mixer.prepare()` + `mixer.setLatencyCompensation(dpcm.getLatencySamples())` and notifies the host via `_host.latencyChanged()` (guarded by `canUseLatency()`) — per `clap/ext/latency.h`, latency is only allowed to change during `activate()`. `latencyGet()` now returns `dpcm.getLatencySamples()` instead of the hardcoded `0`; confirms FFTConvolver/`Speaker` contributes no additional latency (same assumption the original makes for its `juce::dsp::Convolution` stage).
 
 ## Phase 3 — GUI with Visage
 
@@ -97,8 +101,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 1. **VST3 SDK & AudioUnit SDK aren't vendored.** clap-wrapper needs them for VST3/AU builds.
    → Use `CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=ON` (CPM auto-fetch) for early bring-up; consider vendoring as submodules later for reproducible/offline builds. Note the VST3 SDK's GPLv3/commercial dual license — the original project already accepts this tradeoff by shipping VST3 builds.
 
-2. **No JUCE-free ballistics/envelope follower.** `juce::dsp::BallisticsFilter` (used for the RMS/attack-release gate) has no IADSP counterpart.
-   → Implement a small one-pole attack/release envelope follower; good candidate to upstream into `IADSP::IA_SynthBasics` since IADSP is our own library.
+2. ~~**No JUCE-free ballistics/envelope follower.**~~ Done — `IADSP::EnvelopeFollower` (`third_party/IADSP/IA_Utilities/EnvelopeFollower.{hpp,cpp}`) is a JUCE-free port of `juce::dsp::BallisticsFilter`'s attack/release ballistics math (peak/RMS modes, exact exponential coefficients). Still open: wiring two instances into `DeltaModulation`'s gate, per the original's `RMSFilter`/`envelopeFilter` cascade (see Phase 2 task above).
 
 3. **No lock-free FIFO usable without JUCE.** `IADSP::Fifo` wraps `juce::AbstractFifo`; needed for audio-thread→UI-thread oscilloscope data.
    → Write a small SPSC ring buffer; check `visage_utils`'s threading utilities first in case something reusable already exists there.
