@@ -33,18 +33,19 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 
 ## Phase 1 — CLAP Plugin Shell
 
-- [ ] Plugin class via `clap::helpers::Plugin<>` (clap-helpers' C++ base, avoids hand-rolling the raw C ABI)
-- [ ] `audio-ports` extension (stereo in/out)
-- [ ] Internal `Parameter` abstraction + `params` extension covering the original's 6 parameters with matching IDs/ranges/defaults:
+- [x] Plugin class via `clap::helpers::Plugin<>` (clap-helpers' C++ base, avoids hand-rolling the raw C ABI) — `Plugin/SlopeOverloadPlugin.h/.cpp`, renamed in place from Phase 0's `passthrough_clap.*`/`passthrough_clap_entry.*`. Requires `#include <clap/helpers/plugin.hxx>` (and `host-proxy.hxx`) in exactly the TU defining the class — `plugin.hh` only declares the template, `plugin.hxx` has the method bodies that need instantiating for our `<Terminate, Maximal>` specialization, otherwise the linker can't find them.
+- [x] `audio-ports` extension — supports both mono (1-in/1-out) and stereo (2-in/2-out) via the `audio-ports-config` extension (2 configs, host-selectable while inactive); the original's mono→stereo expansion case was intentionally dropped, only matching in/out channel counts are supported
+- [x] Internal `Parameter` abstraction (`Plugin/Parameter.h/.cpp`) + `params` extension covering the original's 6 parameters with matching IDs/ranges/defaults:
   - `active` (bool, default true)
   - `inGain` (float, −60..+24 dB, default 0)
   - `outGain` (float, −60..+12 dB, default 0)
   - `sRate` (int, 0–15, default 7)
   - `aaFilt` (bool, default true)
   - `speaker` (choice {A, B, C}, default A)
-- [ ] `state` extension with a new, simple serialization format (no need for preset compatibility with the original — see Open Items #4)
-- [ ] `process()`: drain parameter-change events, run the Phase 1 chain, handle bypass
-- [ ] `latency`/`tail` extensions as needed
+- [x] `state` extension with a new, simple serialization format (magic/version/count header + fixed-order parameter values; no preset compatibility with the original — see Open Items #4)
+- [x] `process()`: drain parameter-change events (block-granularity, not sample-accurate — nothing yet depends on per-sample timing since no DSP consumes the values), pure passthrough audio (Phase 1 intentionally does not apply gain/bypass to the signal — that lands with the real DSP in Phase 2), handle mono/stereo port config
+- [x] `latency` extension (explicit 0 for now). `tail` extension skipped — meaningless before Phase 2's convolution/oversampling exist to report a real tail
+- [ ] Load-test the Phase 1 shell in an actual DAW/host (parameter automation, state save/reload round-trip) — **manual step, not yet done**, same sandboxed-environment limitation as Phase 0's outstanding DAW check. `free-audio/clap-validator` was not readily available in this environment either (would need a Rust toolchain fetch/build); vendoring it is still tracked as Phase 5 work
 
 ## Phase 2 — Audio Engine Core (headless, no UI)
 
@@ -63,7 +64,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
   - reuse `IADSP::BasicClippers::cubicSoftClip` post-convolution as-is
   - real-time-safe IR swap on speaker change (see Open Items #5)
   - the third `speaker` choice is an intentional bypass/off state (no convolution run, not a missing IR) — no extra asset needed
-  - blocked on deciding IR loading (Open Items #8) and must resample IRs to the host's running sample rate at load time, never the reverse (Open Items #9)
+  - IR loading/resampling is done (`DSP/IRLoader.h`, see Open Items #8/#9) — still open: calling `resampleSpeakerIR()` at `prepareToPlay`/`activate()` time with the host's real sample rate and feeding the result into `FFTConvolver::init()`
 - [ ] Custom dry/wet mixer in IADSP libaray (replaces `juce::dsp::DryWetMixer`)
 - [ ] Custom bypass delay line (replaces `juce::dsp::DelayLine`)
 - [ ] Wire latency reporting (oversampler latency; FFTConvolver reportedly adds none — confirm)
@@ -77,7 +78,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 - [ ] Custom oscilloscope `Frame` (replaces `PixelScope`), fed by a new lock-free SPSC ring buffer (see Open Items #4) written on the audio thread, polled on a UI timer (~50ms, matching the original's refresh rate)
 - [ ] Power button via `ToggleIconButton` using the existing `PowerButton_On.svg`/`PowerButton_Off.svg`
 - [ ] Resizable vector background via `SvgFrame` + `Background.svg`
-- [ ] Port assets from `../Slope-Overload/assets` (2 fonts, 3 SVGs, 2 WAV IRs) into this project, embedded via `visage_file_embed`
+- [ ] Port assets from `../Slope-Overload/assets` (2 fonts, 3 SVGs) into this project, embedded via `visage_file_embed` — the 2 WAV IRs are already handled (pulled forward into `DSP/IR/`, see Open Items #8; not via `visage_file_embed`, see below)
 - [ ] Adapt or create some kind of parameter attachment class or way of managing connections between the audio engine and the UI
 
 ## Phase 4 — Packaging & Distribution
@@ -114,9 +115,8 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 7. **No plugin-validation tooling vendored.** The original had no test suite either (manual DAW testing only), but CLAP plugins lose JUCE's relatively forgiving host-wrapper safety net.
    → Recommend adding `free-audio/clap-validator` as an external dev tool.
 
-8. **No WAV decoding capability anywhere in the dependency tree.** Confirmed by direct inspection: `FFTConvolver` only accepts raw `float*` sample arrays (no file I/O at all), and neither `IADSP` nor `visage` contain a WAV/RIFF decoder. The original got this for free via JUCE's `AudioFormatManager` inside `juce::dsp::Convolution::loadImpulseResponse()`. **Unresolved — options, not yet decided:**
-   - Vendor a tiny single-header public-domain WAV decoder (e.g. `dr_wav.h`) as a new third_party dependency — also leaves room for a future user-loadable custom-IR feature the original doesn't have
-   - Pre-decode the 2 shipped IR WAVs to raw float32 arrays once during development, embed the raw data directly via `visage_file_embed` — no runtime parser, no new dependency, but locks IRs to build-time only (matches original's fixed-IR behavior)
-   - Hand-roll a minimal RIFF/WAV parser scoped to exactly what's needed (PCM16/24/32 + float, mono)
+8. **~~No WAV decoding capability anywhere in the dependency tree.~~ Resolved.** `FFTConvolver` only accepts raw `float*` sample arrays (no file I/O at all), and neither `IADSP` nor `visage` contain a WAV/RIFF decoder; the original got this for free via JUCE's `AudioFormatManager` inside `juce::dsp::Convolution::loadImpulseResponse()`.
+   → Chose the "pre-decode + embed" option: `tools/convert_ir_wav.py` (stdlib-only Python, hand-rolled RIFF chunk walk — asserts mono only, decodes whatever PCM/float bit depth the `fmt ` chunk actually reports) converts each source WAV in `Assets/` into a generated C++ header under `DSP/IR/` (`constexpr std::array<float, N>` + a `SpeakerIRData{ sampleRate, std::span<const float> }` instance, see `DSP/IRData.h`). No WAV parser ships in the plugin binary; no new runtime dependency. `DSP/IRLoader.h` exposes `getSpeakerIRData(SpeakerIR)` and `resampleSpeakerIR(SpeakerIR, targetSampleRate)`. Rerun the script only if the source IR assets change.
 
-9. **IR sample-rate mismatch.** The shipped IR WAVs are fixed at 48kHz; the host/plugin may run at a different sample rate. The IR must be resampled to match the plugin's running sample rate at load time — not the other way around (never resample the live audio signal to match the IR). JUCE's `dsp::Convolution` likely handled this resampling internally; the replacement must do it explicitly as part of whichever IR-loading solution (#9) is chosen. `IADSP::IA_Utilities/ResamplingFilter.hpp` (already vendored) is a plausible building block for this and should be evaluated when IR loading is implemented.
+9. **~~IR sample-rate mismatch.~~ Partially resolved.** The shipped IR WAVs are fixed at 48kHz; the host/plugin may run at a different sample rate. The IR must be resampled to match the plugin's running sample rate at load time — not the other way around (never resample the live audio signal to match the IR).
+   → `DSP/IRLoader::resampleSpeakerIR()` wraps `IADSP::IA_Utilities/ResamplingFilter.hpp` and does this now. Still open: actually calling it at `prepareToPlay`/`activate()` time with the host's live sample rate and feeding the result into `FFTConvolver::init()` — that lands with the rest of the Phase 2 convolution stage.

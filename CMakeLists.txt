@@ -26,4 +26,5 @@ add_subdirectory(third_party/visage)
 # third_party/FFTConvolver has no CMakeLists.txt and isn't used until Phase 2's
 # convolution stage - its build wiring is deferred there (see TASKS.md).
 
+add_subdirectory(DSP)
 add_subdirectory(Plugin)
