@@ -1,5 +1,5 @@
-add_library(SlopeOverload-impl STATIC passthrough_clap.cpp)
-target_link_libraries(SlopeOverload-impl PUBLIC clap)
+add_library(SlopeOverload-impl STATIC SlopeOverloadPlugin.cpp Parameter.cpp)
+target_link_libraries(SlopeOverload-impl PUBLIC clap clap-helpers SlopeOverload-dsp)
 
 make_clapfirst_plugins(
         TARGET_NAME SlopeOverload
@@ -7,7 +7,7 @@ make_clapfirst_plugins(
 
         OUTPUT_NAME "Slope Overload"
 
-        ENTRY_SOURCE "passthrough_clap_entry.cpp"
+        ENTRY_SOURCE "SlopeOverloadPlugin_entry.cpp"
 
         BUNDLE_IDENTIFIER "com.icebreakeraudio.slopeoverload"
         BUNDLE_VERSION ${PROJECT_VERSION}
