@@ -4,10 +4,10 @@
 #include <cstdint>
 #include <vector>
 
-#include "AudioBuffer.h"
 #include "IA_Filters/EQ/OnePoleEQFilter.hpp"
 #include "IA_Filters/FirstOrderFilter.hpp"
 #include "IA_Filters/SecondOrderFilter.hpp"
+#include "IA_Utilities/AudioBuffer.hpp"
 #include "IA_Utilities/EnvelopeFollower.hpp"
 #include "IA_Utilities/Oversampler.hpp"
 

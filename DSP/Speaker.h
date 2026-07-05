@@ -5,8 +5,8 @@
 #include <memory>
 #include <vector>
 
-#include "AudioBuffer.h"
 #include "FFTConvolver.h"
+#include "IA_Utilities/AudioBuffer.hpp"
 
 // Speaker convolution using FFTConvolver. Both real IRs are pre-built once in initialize()
 // - there are only ever two, known in advance - so switching between them at runtime just
