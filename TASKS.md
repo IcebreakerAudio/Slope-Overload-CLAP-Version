@@ -35,13 +35,13 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 
 - [x] Adapt `third_party/visage/examples/ClapPlugin/clap_plugin.cpp` as the `gui` extension integration template (`guiCreate`/`guiSetParent`/`guiSetSize`/resize hints) — this exists already and de-risks CLAP↔Visage embedding entirely
 - [x] Resizable vector background via `SvgFrame` + `Background.svg`
-- [ ] Port assets from `../Slope-Overload/assets` (2 fonts, 3 SVGs) into this project, embedded via `visage_file_embed` — the 2 WAV IRs are already handled (pre-decoded into `DSP/IRData/`, see Open Items #8; not via `visage_file_embed`)
-- [ ] Custom slider widget with digital text readout (replaces `TextSlider`) for `inGain`/`outGain`/`sRate`
-- [ ] Custom grouped-toggle selector (replaces `RadioButtonComponent`) for `speaker`
-- [ ] Reuse a plain `ToggleButton` for `aaFilt`
-- [ ] Power button via `ToggleIconButton` using the existing `PowerButton_On.svg`/`PowerButton_Off.svg`
+- [x] Port assets from `../Slope-Overload/assets` (2 fonts, 3 SVGs) into this project, embedded via `visage_file_embed` — the 2 WAV IRs are already handled (pre-decoded into `DSP/IRData/`, see Open Items #8; not via `visage_file_embed`)
+- [x] Custom slider widget with digital text readout (replaces `TextSlider`) for `inGain`/`outGain`/`sRate`
+- [x] Custom grouped-toggle selector (replaces `RadioButtonComponent`) for `speaker`
+- [x] Reuse a plain `ToggleButton` for `aaFilt`
+- [x] Power button via `ToggleIconButton` using the existing `PowerButton_On.svg`/`PowerButton_Off.svg`
 - [ ] Custom oscilloscope `Frame` (replaces `PixelScope`), fed by `IADSP::Fifo` (see Open Items #3) written on the audio thread, polled on a UI timer (~50ms, matching the original's refresh rate)
-- [ ] Adapt or create some kind of parameter attachment class or way of managing connections between the audio engine and the UI
+- [x] Adapt or create some kind of parameter attachment class or way of managing connections between the audio engine and the UI
 
 ## Phase 4 — Packaging & Distribution
 
