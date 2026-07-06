@@ -1,5 +1,5 @@
-add_library(SlopeOverload-impl STATIC SlopeOverloadPlugin.cpp Parameter.cpp)
-target_link_libraries(SlopeOverload-impl PUBLIC clap clap-helpers SlopeOverload-dsp)
+add_library(SlopeOverload-impl STATIC SlopeOverloadPlugin.cpp Parameter.cpp ParamAttachment.cpp)
+target_link_libraries(SlopeOverload-impl PUBLIC clap clap-helpers SlopeOverload-dsp SlopeOverload-ui)
 
 make_clapfirst_plugins(
         TARGET_NAME SlopeOverload

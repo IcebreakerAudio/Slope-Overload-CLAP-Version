@@ -7,7 +7,7 @@
 
 Parameter::Parameter(clap_id id, std::string name, double min, double max, double defaultValue,
                        clap_param_info_flags flags, ParamFormat format,
-                       std::vector<std::string> choiceLabels)
+                       std::vector<std::string> choiceLabels, double skew)
     : _id(id),
       _name(std::move(name)),
       _min(min),
@@ -16,6 +16,7 @@ Parameter::Parameter(clap_id id, std::string name, double min, double max, doubl
       _flags(flags),
       _format(format),
       _choiceLabels(std::move(choiceLabels)),
+      skewFactor(skew),
       _value(defaultValue)
 {
 }
@@ -46,7 +47,7 @@ bool Parameter::valueToText(double value, char *out, uint32_t size) const noexce
         return true;
 
     case ParamFormat::Decibels:
-        std::snprintf(out, size, "%.2f dB", value);
+        std::snprintf(out, size, "%+.1fdB", value);
         return true;
 
     case ParamFormat::Integer:

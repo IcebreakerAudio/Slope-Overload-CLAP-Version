@@ -17,6 +17,11 @@ endif()
 # Auto-fetch the VST3/AudioUnit SDKs via CPM instead of vendoring them (see TASKS.md Open Items #1)
 set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES ON CACHE BOOL "Download VST3/AudioUnit SDKs via CPM" FORCE)
 
+# Force static linking for third-party deps that default to BUILD_SHARED_LIBS (e.g. visage's
+# vendored FreeType). Plugin bundles are loaded into a host's process directory, not this build
+# tree, so a sibling DLL (e.g. freetyped.dll) would never be found on the host's DLL search path.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build all libraries as static by default" FORCE)
+
 add_subdirectory(third_party/clap)
 add_subdirectory(third_party/clap-helpers)
 add_subdirectory(third_party/clap-wrapper)
@@ -28,4 +33,5 @@ add_subdirectory(third_party/visage)
 include(cmake/FFTConvolver.cmake)
 
 add_subdirectory(DSP)
+add_subdirectory(UI)
 add_subdirectory(Plugin)

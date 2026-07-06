@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 #include "IA_Utilities/AudioBuffer.hpp"
 #include "ScopedNoDenormals.h"
@@ -76,18 +77,49 @@ SlopeOverloadPlugin::SlopeOverloadPlugin(const clap_host_t *host)
           Parameter(ParamIndex::Active, "On/Off", 0.0, 1.0, 1.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Toggle),
           Parameter(ParamIndex::InGain, "Input", -60.0, 24.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
-                     ParamFormat::Decibels),
+                     ParamFormat::Decibels, {}, 1.5),
           Parameter(ParamIndex::OutGain, "Output", -60.0, 12.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
-                     ParamFormat::Decibels),
+                     ParamFormat::Decibels, {}, 1.5),
           Parameter(ParamIndex::SRate, "Sample Rate", 0.0, 15.0, 7.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Integer),
           Parameter(ParamIndex::AAFilt, "Pre-Filter", 0.0, 1.0, 1.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Toggle),
           Parameter(ParamIndex::Speaker, "Speaker", 0.0, 2.0, 0.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Choice,
-                     std::vector<std::string>{"A", "B", "C"})}
+                     std::vector<std::string>{"A", "B", "C"})},
+      paramAttachments{
+          ParamAttachment(_params[ParamIndex::Active], pendingChanges[ParamIndex::Active],
+                          [this] { requestParamFlush(); }),
+          ParamAttachment(_params[ParamIndex::InGain], pendingChanges[ParamIndex::InGain],
+                          [this] { requestParamFlush(); }),
+          ParamAttachment(_params[ParamIndex::OutGain], pendingChanges[ParamIndex::OutGain],
+                          [this] { requestParamFlush(); }),
+          ParamAttachment(_params[ParamIndex::SRate], pendingChanges[ParamIndex::SRate],
+                          [this] { requestParamFlush(); }),
+          ParamAttachment(_params[ParamIndex::AAFilt], pendingChanges[ParamIndex::AAFilt],
+                          [this] { requestParamFlush(); }),
+          ParamAttachment(_params[ParamIndex::Speaker], pendingChanges[ParamIndex::Speaker],
+                          [this] { requestParamFlush(); })}
 {
 }
+
+void SlopeOverloadPlugin::requestParamFlush() noexcept
+{
+    if (_host.canUseParams())
+    {
+        _host.paramsRequestFlush();
+    }
+}
+
+#ifdef __linux__
+void SlopeOverloadPlugin::onPosixFd(int, clap_posix_fd_flags_t) noexcept
+{
+    if (editor && editor->window())
+    {
+        editor->window()->processPluginFdEvents();
+    }
+}
+#endif
 
 uint32_t SlopeOverloadPlugin::audioPortsCount(bool) const noexcept
 {
@@ -190,9 +222,10 @@ bool SlopeOverloadPlugin::paramsTextToValue(clap_id paramId, const char *display
     return param != nullptr && param->textToValue(display, value);
 }
 
-void SlopeOverloadPlugin::paramsFlush(const clap_input_events_t *in, const clap_output_events_t *) noexcept
+void SlopeOverloadPlugin::paramsFlush(const clap_input_events_t *in, const clap_output_events_t *out) noexcept
 {
     drainParamEvents(in);
+    drainOutboundParamEvents(out);
 }
 
 bool SlopeOverloadPlugin::stateSave(const clap_ostream_t *stream) noexcept
@@ -265,6 +298,7 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
     const ScopedNoDenormals noDenormals;
 
     drainParamEvents(process->in_events);
+    drainOutboundParamEvents(process->out_events);
 
     const AudioBuffer input(process->audio_inputs[0].data32, process->audio_inputs[0].channel_count,
                              process->frames_count);
@@ -308,6 +342,184 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
     return CLAP_PROCESS_CONTINUE;
 }
 
+bool SlopeOverloadPlugin::guiIsApiSupported(const char *api, bool isFloating) noexcept
+{
+    if (isFloating)
+    {
+        return false;
+    }
+
+#ifdef _WIN32
+    if (std::strcmp(api, CLAP_WINDOW_API_WIN32) == 0)
+    {
+        return true;
+    }
+#elif __APPLE__
+    if (std::strcmp(api, CLAP_WINDOW_API_COCOA) == 0)
+    {
+        return true;
+    }
+#elif __linux__
+    if (std::strcmp(api, CLAP_WINDOW_API_X11) == 0)
+    {
+        return true;
+    }
+#endif
+
+    return false;
+}
+
+bool SlopeOverloadPlugin::guiCreate(const char *, bool isFloating) noexcept
+{
+    if (isFloating)
+    {
+        return false;
+    }
+
+    if (editor)
+    {
+        return true;
+    }
+
+    editor = std::make_unique<SlopeOverloadEditor>(
+        paramAttachments[ParamIndex::Active], paramAttachments[ParamIndex::InGain],
+        paramAttachments[ParamIndex::OutGain], paramAttachments[ParamIndex::SRate],
+        paramAttachments[ParamIndex::AAFilt], paramAttachments[ParamIndex::Speaker]);
+    editor->onWindowContentsResized() = [this] { _host.guiRequestResize(pluginWidth(), pluginHeight()); };
+
+    return true;
+}
+
+void SlopeOverloadPlugin::guiDestroy() noexcept
+{
+#ifdef __linux__
+    if (editor && editor->window() && _host.canUsePosixFdSupport())
+    {
+        _host.posixFdSupportUnregister(editor->window()->posixFd());
+    }
+#endif
+
+    editor->close();
+    editor = nullptr;
+}
+
+bool SlopeOverloadPlugin::guiSetParent(const clap_window_t *window) noexcept
+{
+    if (editor == nullptr)
+    {
+        return false;
+    }
+
+    editor->show(window->ptr);
+
+#ifdef __linux__
+    if (_host.canUsePosixFdSupport() && editor->window())
+    {
+        const int fdFlags = CLAP_POSIX_FD_READ | CLAP_POSIX_FD_WRITE | CLAP_POSIX_FD_ERROR;
+        return _host.posixFdSupportRegister(editor->window()->posixFd(), fdFlags);
+    }
+#endif
+
+    return true;
+}
+
+bool SlopeOverloadPlugin::guiGetResizeHints(clap_gui_resize_hints_t *hints) noexcept
+{
+    if (editor == nullptr)
+    {
+        return false;
+    }
+
+    const bool fixedAspectRatio = editor->isFixedAspectRatio();
+    hints->can_resize_horizontally = true;
+    hints->can_resize_vertically = true;
+    hints->preserve_aspect_ratio = fixedAspectRatio;
+
+    if (fixedAspectRatio)
+    {
+        hints->aspect_ratio_width = static_cast<uint32_t>(editor->height() * editor->aspectRatio());
+        hints->aspect_ratio_height = static_cast<uint32_t>(editor->width());
+    }
+
+    return true;
+}
+
+bool SlopeOverloadPlugin::guiAdjustSize(uint32_t *width, uint32_t *height) noexcept
+{
+    if (editor == nullptr)
+    {
+        return false;
+    }
+
+    editor->adjustWindowDimensions(width, height, true, true);
+    return true;
+}
+
+bool SlopeOverloadPlugin::guiSetSize(uint32_t width, uint32_t height) noexcept
+{
+    if (editor == nullptr)
+    {
+        return false;
+    }
+
+    setPluginDimensions(static_cast<int>(width), static_cast<int>(height));
+    return true;
+}
+
+bool SlopeOverloadPlugin::guiGetSize(uint32_t *width, uint32_t *height) noexcept
+{
+    if (editor == nullptr)
+    {
+        return false;
+    }
+
+    *width = static_cast<uint32_t>(pluginWidth());
+    *height = static_cast<uint32_t>(pluginHeight());
+    return true;
+}
+
+int SlopeOverloadPlugin::pluginWidth() const noexcept
+{
+    if (editor == nullptr)
+    {
+        return 0;
+    }
+
+#if __APPLE__
+    return editor->width();
+#else
+    return editor->nativeWidth();
+#endif
+}
+
+int SlopeOverloadPlugin::pluginHeight() const noexcept
+{
+    if (editor == nullptr)
+    {
+        return 0;
+    }
+
+#if __APPLE__
+    return editor->height();
+#else
+    return editor->nativeHeight();
+#endif
+}
+
+void SlopeOverloadPlugin::setPluginDimensions(int width, int height) noexcept
+{
+    if (editor == nullptr)
+    {
+        return;
+    }
+
+#if __APPLE__
+    editor->setWindowDimensions(width, height);
+#else
+    editor->setNativeWindowDimensions(width, height);
+#endif
+}
+
 void SlopeOverloadPlugin::drainParamEvents(const clap_input_events_t *in) noexcept
 {
     if (in == nullptr)
@@ -328,6 +540,62 @@ void SlopeOverloadPlugin::drainParamEvents(const clap_input_events_t *in) noexce
         if (auto *param = findParam(ev->param_id))
         {
             param->setValue(ev->value);
+        }
+    }
+}
+
+void SlopeOverloadPlugin::drainOutboundParamEvents(const clap_output_events_t *out) noexcept
+{
+    if (out == nullptr)
+    {
+        return;
+    }
+
+    for (uint32_t i = 0; i < ParamCount; ++i)
+    {
+        auto &pending = pendingChanges[i];
+        const clap_id paramId = _params[i].id();
+
+        if (pending.beginPending.exchange(false, std::memory_order_acq_rel))
+        {
+            clap_event_param_gesture_t ev{};
+            ev.header.size = sizeof(ev);
+            ev.header.time = 0;
+            ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
+            ev.header.flags = 0;
+            ev.param_id = paramId;
+            out->try_push(out, &ev.header);
+        }
+
+        if (pending.valueDirty.exchange(false, std::memory_order_acq_rel))
+        {
+            clap_event_param_value_t ev{};
+            ev.header.size = sizeof(ev);
+            ev.header.time = 0;
+            ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.header.type = CLAP_EVENT_PARAM_VALUE;
+            ev.header.flags = 0;
+            ev.param_id = paramId;
+            ev.cookie = nullptr;
+            ev.note_id = -1;
+            ev.port_index = -1;
+            ev.channel = -1;
+            ev.key = -1;
+            ev.value = pending.pendingValue.load(std::memory_order_relaxed);
+            out->try_push(out, &ev.header);
+        }
+
+        if (pending.endPending.exchange(false, std::memory_order_acq_rel))
+        {
+            clap_event_param_gesture_t ev{};
+            ev.header.size = sizeof(ev);
+            ev.header.time = 0;
+            ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.header.type = CLAP_EVENT_PARAM_GESTURE_END;
+            ev.header.flags = 0;
+            ev.param_id = paramId;
+            out->try_push(out, &ev.header);
         }
     }
 }
