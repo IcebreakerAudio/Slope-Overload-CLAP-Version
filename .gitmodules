@@ -12,7 +12,7 @@
 	url = https://github.com/IcebreakerAudio/IADSP
 [submodule "third_party/visage"]
 	path = third_party/visage
-	url = https://github.com/VitalAudio/visage
+	url = https://github.com/IcebreakerAudio/visage
 [submodule "third_party/FFTConvolver"]
 	path = third_party/FFTConvolver
 	url = https://github.com/HiFi-LoFi/FFTConvolver.git
