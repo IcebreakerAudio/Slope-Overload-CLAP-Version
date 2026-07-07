@@ -11,6 +11,7 @@ add_library(SlopeOverload-ui STATIC
         SlopeOverloadEditor.cpp
         DigitalSlider.cpp
         GroupedToggle.cpp
+        PixelScope.cpp
         PowerToggleButton.cpp
         ShadowToggleButton.cpp
         ShadowLabel.cpp)

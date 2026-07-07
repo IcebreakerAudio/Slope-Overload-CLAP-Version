@@ -6,8 +6,10 @@
 
 #include "DeltaModulation.h"
 #include "IA_Utilities/CrossfadeMixer.hpp"
+#include "IA_Utilities/FiFo.hpp"
 #include "ParamAttachment.h"
 #include "Parameter.h"
+#include "ScopeAttachment.h"
 #include "Speaker.h"
 #include "SlopeOverloadEditor.h"
 
@@ -110,5 +112,7 @@ private:
     DeltaModulation dpcm;
     ::Speaker speaker;
     IADSP::CrossfadeMixer<float> mixer;
+    Fifo<float> scopeFifo;
+    ScopeAttachment scopeAttachment;
     std::unique_ptr<SlopeOverloadEditor> editor;
 };

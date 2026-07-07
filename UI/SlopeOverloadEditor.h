@@ -2,8 +2,10 @@
 
 #include "DigitalSlider.h"
 #include "GroupedToggle.h"
+#include "PixelScope.h"
 #include "ParamSource.h"
 #include "PowerToggleButton.h"
+#include "ScopeSource.h"
 #include "ShadowLabel.h"
 
 #include <visage/app.h>
@@ -13,7 +15,8 @@ class SlopeOverloadEditor : public visage::ApplicationWindow, public visage::Eve
 {
 public:
     SlopeOverloadEditor(ParamSource &activeSource, ParamSource &inGainSource, ParamSource &outGainSource,
-                        ParamSource &sRateSource, ParamSource &aaFiltSource, ParamSource &speakerSource);
+                        ParamSource &sRateSource, ParamSource &aaFiltSource, ParamSource &speakerSource,
+                        ScopeSource &scopeSource);
 
     void resized() override;
     void timerCallback() override;
@@ -25,6 +28,7 @@ private:
     ParamSource &active;
 
     visage::SvgFrame background;
+    PixelScope scope;
 
     DigitalSlider inGainSlider;
     DigitalSlider outGainSlider;

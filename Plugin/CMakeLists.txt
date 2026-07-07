@@ -1,5 +1,6 @@
 add_library(SlopeOverload-impl STATIC SlopeOverloadPlugin.cpp Parameter.cpp ParamAttachment.cpp)
 target_link_libraries(SlopeOverload-impl PUBLIC clap clap-helpers SlopeOverload-dsp SlopeOverload-ui)
+target_compile_definitions(SlopeOverload-impl PUBLIC SLOPEOVERLOAD_VERSION_STRING="${PROJECT_VERSION}")
 
 make_clapfirst_plugins(
         TARGET_NAME SlopeOverload
@@ -26,3 +27,18 @@ make_clapfirst_plugins(
         STANDALONE_CONFIGURATIONS
         standalone "Slope Overload" com.icebreakeraudio.slopeoverload
 )
+
+if (WIN32)
+    add_win32_version_info(TARGET SlopeOverload_clap
+            FILE_DESCRIPTION "Slope Overload CLAP Plugin"
+            ORIGINAL_FILENAME "Slope Overload.clap"
+            INTERNAL_NAME "SlopeOverload" FILE_TYPE "VFT_DLL")
+    add_win32_version_info(TARGET SlopeOverload_vst3
+            FILE_DESCRIPTION "Slope Overload VST3 Plugin"
+            ORIGINAL_FILENAME "Slope Overload.vst3"
+            INTERNAL_NAME "SlopeOverload" FILE_TYPE "VFT_DLL")
+    add_win32_version_info(TARGET SlopeOverload_standalone
+            FILE_DESCRIPTION "Slope Overload Standalone"
+            ORIGINAL_FILENAME "Slope Overload.exe"
+            INTERNAL_NAME "SlopeOverload" FILE_TYPE "VFT_APP")
+endif()

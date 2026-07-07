@@ -1,5 +1,6 @@
 #include "SlopeOverloadPlugin.h"
 
+#include <algorithm>
 #include <clap/clap.h>
 #include <clap/helpers/host-proxy.hxx>
 #include <clap/helpers/plugin.hxx>
@@ -20,6 +21,8 @@ float dbToGain(double db) noexcept { return static_cast<float>(std::pow(10.0, db
 
 constexpr uint32_t kStateMagic = 0x31766f53;  // "Sov1"
 constexpr uint32_t kStateVersion = 1;
+
+constexpr double kScopeBufferSeconds = 0.5;
 
 template <typename T>
 bool writeAll(const clap_ostream_t *stream, const T &value) noexcept
@@ -67,7 +70,7 @@ const clap_plugin_descriptor_t SlopeOverloadPlugin::descriptor = {
     "https://github.com/IcebreakerAudio/Slope-Overload",
     "",
     "",
-    "0.1.0",
+    SLOPEOVERLOAD_VERSION_STRING,
     "NES/Famicom DPCM delta-modulation emulation",
     &kFeatures[0]};
 
@@ -99,7 +102,8 @@ SlopeOverloadPlugin::SlopeOverloadPlugin(const clap_host_t *host)
           ParamAttachment(_params[ParamIndex::AAFilt], pendingChanges[ParamIndex::AAFilt],
                           [this] { requestParamFlush(); }),
           ParamAttachment(_params[ParamIndex::Speaker], pendingChanges[ParamIndex::Speaker],
-                          [this] { requestParamFlush(); })}
+                          [this] { requestParamFlush(); })},
+      scopeAttachment(scopeFifo)
 {
 }
 
@@ -284,6 +288,8 @@ bool SlopeOverloadPlugin::activate(double sampleRate, uint32_t, uint32_t maxFram
         _host.latencyChanged();
     }
 
+    scopeFifo.setSize(std::max(1, static_cast<int>(sampleRate * kScopeBufferSeconds)));
+
     return true;
 }
 
@@ -291,6 +297,7 @@ void SlopeOverloadPlugin::deactivate() noexcept
 {
     dpcm.reset();
     mixer.reset();
+    scopeFifo.reset();
 }
 
 clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) noexcept
@@ -339,6 +346,15 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
     mixer.setMix(findParam(ParamIndex::Active)->value() >= 0.5 ? 1.0f : 0.0f);
     mixer.mixSecondSignal(output.data(), static_cast<int>(output.numFrames()));
 
+    if (findParam(ParamIndex::Active)->value() >= 0.5)
+    {
+        scopeFifo.addToFifo(output);
+    }
+    else
+    {
+        scopeFifo.zeroFifo(static_cast<int>(output.numFrames()));
+    }
+
     return CLAP_PROCESS_CONTINUE;
 }
 
@@ -384,7 +400,7 @@ bool SlopeOverloadPlugin::guiCreate(const char *, bool isFloating) noexcept
     editor = std::make_unique<SlopeOverloadEditor>(
         paramAttachments[ParamIndex::Active], paramAttachments[ParamIndex::InGain],
         paramAttachments[ParamIndex::OutGain], paramAttachments[ParamIndex::SRate],
-        paramAttachments[ParamIndex::AAFilt], paramAttachments[ParamIndex::Speaker]);
+        paramAttachments[ParamIndex::AAFilt], paramAttachments[ParamIndex::Speaker], scopeAttachment);
     editor->onWindowContentsResized() = [this] { _host.guiRequestResize(pluginWidth(), pluginHeight()); };
 
     return true;

@@ -6,9 +6,11 @@ using namespace visage::dimension;
 
 SlopeOverloadEditor::SlopeOverloadEditor(ParamSource &activeSource, ParamSource &inGainSource,
                                          ParamSource &outGainSource, ParamSource &sRateSource,
-                                         ParamSource &aaFiltSource, ParamSource &speakerSource)
+                                         ParamSource &aaFiltSource, ParamSource &speakerSource,
+                                         ScopeSource &scopeSource)
     : active(activeSource),
       background(assets::Background_svg),
+      scope(scopeSource),
       inGainSlider(inGainSource, visage::Font(28.0f, assets::VT323_Regular_ttf), false),
       outGainSlider(outGainSource, visage::Font(28.0f, assets::VT323_Regular_ttf), false),
       sRateSlider(sRateSource, visage::Font(32.0f, assets::DigitalNumbers_Regular_ttf), true),
@@ -24,6 +26,7 @@ SlopeOverloadEditor::SlopeOverloadEditor(ParamSource &activeSource, ParamSource 
       speakerLabel("SPEAKER", visage::Font(28.0f, assets::VT323_Regular_ttf), visage::Font::kCenter)
 {
     addChild(&background);
+    addChild(&scope);
     addChild(&inGainSlider);
     addChild(&outGainSlider);
     addChild(&sRateSlider);
@@ -60,6 +63,8 @@ void SlopeOverloadEditor::resized()
     {
         return visage::Bounds(x * ratio, y * ratio, w * ratio, h * ratio);
     };
+
+    scope.setBounds(scaled(140.0f, 131.0f, 480.0f, 155.0f));
 
     inGainSlider.setBounds(scaled(190.0f, 82.0f, 90.0f, 34.0f));
     outGainSlider.setBounds(scaled(524.0f, 82.0f, 90.0f, 34.0f));

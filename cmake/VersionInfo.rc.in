@@ -1,0 +1,30 @@
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @SLOPEOVERLOAD_RC_FILEVERSION@
+ PRODUCTVERSION @SLOPEOVERLOAD_RC_FILEVERSION@
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE @SLOPEOVERLOAD_RC_FILETYPE@
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Icebreaker Audio"
+            VALUE "FileDescription", "@SLOPEOVERLOAD_RC_FILE_DESCRIPTION@"
+            VALUE "FileVersion", "@PROJECT_VERSION@"
+            VALUE "InternalName", "@SLOPEOVERLOAD_RC_INTERNAL_NAME@"
+            VALUE "LegalCopyright", "Copyright (c) 2026 IcebreakerAudio"
+            VALUE "OriginalFilename", "@SLOPEOVERLOAD_RC_ORIGINAL_FILENAME@"
+            VALUE "ProductName", "Slope Overload"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

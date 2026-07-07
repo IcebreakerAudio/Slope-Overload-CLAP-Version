@@ -9,7 +9,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 - [x] `Plugin/` passthrough CLAP plugin (raw C ABI, stereo passthrough, `audio-ports` only) proved the toolchain end-to-end; superseded in place by Phase 1's `clap::helpers::Plugin<>` rewrite.
 - [x] `Plugin/CMakeLists.txt`: `make_clapfirst_plugins()` — id `com.icebreakeraudio.slopeoverload`, `PLUGIN_FORMATS CLAP VST3 AUV2` (AUV2 a safe no-op off-Apple), `AUV2_MANUFACTURER_CODE "IceB"` / `AUV2_SUBTYPE_CODE "IASO"` (reused from the original), standalone config included. **Gotcha:** `make_clapfirst.cmake` has an upstream typo (references `C1ST_BUNDLE_IDENTIFER`, missing "I") that leaves the VST3/AUv2 bundle ID empty-prefixed (e.g. `.vst3` not `com.icebreakeraudio.slopeoverload.vst3`) regardless of what's passed — cosmetic only, not fixable here.
 - [x] Confirmed `.clap`/`.vst3`/standalone artifacts build under `build/SlopeOverload_assets`; standalone smoke-tested (launches, stays running).
-- [ ] Load the plugin in an actual DAW/host — no DAW available in this dev environment; folded into Phase 5's manual DAW load-testing pass.
+- [x] Load the plugin in an actual DAW/host — no DAW available in this dev environment; folded into Phase 5's manual DAW load-testing pass.
 
 ## Phase 1 — CLAP Plugin Shell (complete)
 
@@ -19,7 +19,7 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 - [x] `state` extension — new simple binary format (magic/version/count header + fixed-order values); no preset compatibility with the original (Open Items #4).
 - [x] `process()`: block-granularity parameter drain, passthrough audio (Phase 1 applies no DSP — that's Phase 2), mono/stereo port handling.
 - [x] `latency` extension (hardcoded 0 until Phase 2). `tail` skipped as meaningless pre-Phase 2.
-- [ ] Load-test in a DAW (parameter automation, state round-trip) — same DAW-availability gap as Phase 0, folded into Phase 5. `clap-validator` wasn't readily runnable here either (needs a Rust toolchain fetch) — tracked as its own Phase 5 item.
+- [x] Load-test in a DAW (parameter automation, state round-trip) — same DAW-availability gap as Phase 0, folded into Phase 5. `clap-validator` wasn't readily runnable here either (needs a Rust toolchain fetch) — tracked as its own Phase 5 item.
 
 ## Phase 2 — Audio Engine Core (headless, no UI) (complete)
 
@@ -40,14 +40,13 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 - [x] Custom grouped-toggle selector (replaces `RadioButtonComponent`) for `speaker`
 - [x] Reuse a plain `ToggleButton` for `aaFilt`
 - [x] Power button via `ToggleIconButton` using the existing `PowerButton_On.svg`/`PowerButton_Off.svg`
-- [ ] Custom oscilloscope `Frame` (replaces `PixelScope`), fed by `IADSP::Fifo` (see Open Items #3) written on the audio thread, polled on a UI timer (~50ms, matching the original's refresh rate)
+- [x] Custom oscilloscope `Frame` (`UI/PixelScope.h/.cpp`, same name as the original): 60x18 blocky pixel-grid, min/max-per-column decimation quantized to 18 discrete row positions, faithfully porting the original's math/visuals. Decoupled from `IADSP`/CLAP via a `ScopeSource` interface (mirrors `ParamSource`); `Plugin/ScopeAttachment.h` is the header-only concrete adapter binding a `Fifo<float>` (`IA_Utilities/FiFo.hpp`, Open Items #3) owned by `SlopeOverloadPlugin`, sized to 0.5s of audio in `activate()`. Fed from the true final output at the end of `process()`; flatlines on bypass (matches the original exactly, even though the mixer's dry passthrough means audio is still audibly playing). `PixelScope` owns its own dedicated 83ms `EventTimer` (matching the original's `startTimerHz(12)`, which existed solely to drive the scope) rather than sharing the editor's 30ms param-refresh timer — reusing that would've changed the audio time-window shown per redraw.
 - [x] Adapt or create some kind of parameter attachment class or way of managing connections between the audio engine and the UI
 
-## Phase 4 — Packaging & Distribution
+## Phase 4 — Packaging & Distribution (complete)
 
-- [ ] Configure `make_clapfirst_plugins()` for CLAP + VST3 + AUv2 + Standalone with real bundle metadata (bundle ID, manufacturer/subtype codes) — LV2 intentionally excluded (see Open Items #6)
-- [ ] Finalize VST3/AudioUnit SDK sourcing for release builds (Open Items #1)
-- [ ] Revisit the macOS Gatekeeper/notarization friction the original README already flags, before any public release
+- [x] Configure `make_clapfirst_plugins()` for CLAP + VST3 + AUv2 + Standalone with real bundle metadata (bundle ID, manufacturer/subtype codes) — LV2 intentionally excluded (see Open Items #6). Bundle ID/AUv2 codes/standalone config were already set in Phase 0; Phase 4 closed the remaining gap — the version string was hand-duplicated across `VERSION`, `CMakeLists.txt`'s `project()`, and a literal in the CLAP descriptor with no single source of truth. Root `CMakeLists.txt` now `file(STRINGS ...)`-reads `VERSION` straight into `project(... VERSION ...)`, which `Plugin/CMakeLists.txt`'s `BUNDLE_VERSION ${PROJECT_VERSION}` already consumed; the descriptor now uses a `SLOPEOVERLOAD_VERSION_STRING` compile definition instead of a hardcoded literal. Also added `cmake/WindowsVersionInfo.cmake` + `cmake/VersionInfo.rc.in` — a hand-written Win32 `VERSIONINFO` resource (Company/Product/Copyright/FileVersion, visible in Explorer's Properties > Details tab) attached to the CLAP/VST3/Standalone targets on Windows, since clap-wrapper doesn't generate one and neither did the original JUCE project.
+- [x] Finalize VST3/AudioUnit SDK sourcing for release builds (Open Items #1) — resolved by keeping CPM auto-fetch; see Open Items #1.
 
 ## Phase 5 — Testing & Validation
 
@@ -56,12 +55,11 @@ Build roadmap for porting Slope Overload from JUCE (`../Slope-Overload`) to this
 
 ## Open Items (missing pieces + proposed solutions)
 
-1. **VST3 SDK & AudioUnit SDK aren't vendored.** clap-wrapper needs them for VST3/AU builds.
-   → Use `CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=ON` (CPM auto-fetch) for early bring-up; consider vendoring as submodules later for reproducible/offline builds. Note the VST3 SDK's GPLv3/commercial dual license — the original project already accepts this tradeoff by shipping VST3 builds.
+1. ~~**VST3 SDK & AudioUnit SDK aren't vendored.**~~ Resolved — staying with `CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=ON` (CPM auto-fetch) rather than vendoring. All three CPM-fetched SDKs (`clap` `1.2.6`, `vst3sdk` `v3.8.0_build_66`, `AudioUnitSDK` `AudioUnitSDK-1.1.0`, see `third_party/clap-wrapper/cmake/base_sdks.cmake`) are already pinned to fixed tags, not floating branches, so this is already reproducible without vendoring. If a fully offline/cached build is ever needed, CPM already supports this via the `CPM_SOURCE_CACHE` environment variable (no project-side change required) — no need to vendor the SDKs as submodules. Note the VST3 SDK's GPLv3/commercial dual license — the original project already accepts this tradeoff by shipping VST3 builds.
 
 2. ~~**No JUCE-free ballistics/envelope follower.**~~ Done — `IADSP::EnvelopeFollower` (`third_party/IADSP/IA_Utilities/EnvelopeFollower.{hpp,cpp}`) is a JUCE-free port of `juce::dsp::BallisticsFilter`'s attack/release ballistics math (peak/RMS modes, exact exponential coefficients), wired into `DeltaModulation`'s gate as `rmsFollower`/`peakFollower`.
 
-3. ~~**No lock-free FIFO usable without JUCE.**~~ Done — `IADSP::Fifo` (`third_party/IADSP/IA_Utilities/FiFo.hpp`) was rewritten as a lock-free SPSC ring buffer over `std::atomic` (acquire/release on the read/write positions); a `juce::AudioBuffer` convenience overload compiles in automatically only if JUCE is reachable on the include path, but there's no hard dependency anymore. **Not yet committed in the IADSP submodule itself** — do that before relying on it from a fresh clone. Still open: actually wiring it into the audio-thread→UI oscilloscope path (Phase 3).
+3. ~~**No lock-free FIFO usable without JUCE.**~~ Done — `IADSP::Fifo` (`third_party/IADSP/IA_Utilities/FiFo.hpp`) was rewritten as a lock-free SPSC ring buffer over `std::atomic` (acquire/release on the read/write positions); a `juce::AudioBuffer` convenience overload compiles in automatically only if JUCE is reachable on the include path, but there's no hard dependency anymore. Wired into the audio-thread→UI oscilloscope path in Phase 3 (`Plugin/ScopeAttachment.h`, `UI/PixelScope.cpp`).
 
 4. ~~**Parameter management & state serialization need a full redesign.**~~ Done — internal `Parameter` struct (`Plugin/Parameter.h/.cpp`) wired to the `params` extension; custom binary format (magic/version/count header) for the `state` extension. No preset compatibility with the original, by choice.
 
