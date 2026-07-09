@@ -2,7 +2,9 @@
 
 #include <array>
 #include <clap/helpers/plugin.hh>
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "DeltaModulation.h"
 #include "IA_Utilities/CrossfadeMixer.hpp"
@@ -100,6 +102,9 @@ private:
     void requestParamFlush() noexcept;
     const Parameter *findParam(clap_id paramId) const noexcept;
     Parameter *findParam(clap_id paramId) noexcept;
+
+    bool loadLegacyJuceState(const std::vector<std::byte> &buffer) noexcept;
+    bool loadNativeState(const std::vector<std::byte> &buffer) noexcept;
 
     int pluginWidth() const noexcept;
     int pluginHeight() const noexcept;

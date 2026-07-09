@@ -7,7 +7,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "IA_Utilities/AudioBuffer.hpp"
 #include "ScopedNoDenormals.h"
@@ -21,6 +25,10 @@ float dbToGain(double db) noexcept { return static_cast<float>(std::pow(10.0, db
 
 constexpr uint32_t kStateMagic = 0x31766f53;  // "Sov1"
 constexpr uint32_t kStateVersion = 1;
+
+// Magic number JUCE's AudioProcessor::copyXmlToBinary stamps on its state blobs (the original
+// Slope-Overload plugin's format, shared verbatim across its CLAP/VST3/AU/standalone exports).
+constexpr uint32_t kJuceStateMagic = 0x21324356;
 
 constexpr double kScopeBufferSeconds = 0.5;
 
@@ -43,20 +51,51 @@ bool writeAll(const clap_ostream_t *stream, const T &value) noexcept
 }
 
 template <typename T>
-bool readAll(const clap_istream_t *stream, T &value) noexcept
+bool readFromBuffer(const std::vector<std::byte> &buffer, size_t &offset, T &value) noexcept
 {
-    auto *cursor = reinterpret_cast<std::byte *>(&value);
-    size_t bytesLeft = sizeof(T);
-    while (bytesLeft > 0)
+    if (offset > buffer.size() || buffer.size() - offset < sizeof(T))
     {
-        const int64_t readCount = stream->read(stream, cursor, bytesLeft);
-        if (readCount <= 0)
-        {
-            return false;
-        }
-        cursor += readCount;
-        bytesLeft -= static_cast<size_t>(readCount);
+        return false;
     }
+    std::memcpy(&value, buffer.data() + offset, sizeof(T));
+    offset += sizeof(T);
+    return true;
+}
+
+// JUCE's MemoryOutputStream::writeInt always writes little-endian, regardless of host platform.
+uint32_t readLE32(const std::byte *data) noexcept
+{
+    return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+           (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+}
+
+// Finds `<PARAM ... id="paramId" ... value="X.Y" ... />` and extracts X.Y. Deliberately not a
+// general XML parser: the legacy blob's shape (juce::AudioProcessorValueTreeState's XML) is fixed
+// and narrow, so a small attribute scan is enough.
+bool findLegacyParamValue(std::string_view xml, std::string_view paramId, double &outValue) noexcept
+{
+    const std::string needle = std::string("id=\"") + std::string(paramId) + "\"";
+    const size_t idPos = xml.find(needle);
+    if (idPos == std::string_view::npos)
+    {
+        return false;
+    }
+
+    const size_t tagEnd = xml.find('>', idPos);
+    const size_t valueKeyPos = xml.find("value=\"", idPos);
+    if (valueKeyPos == std::string_view::npos || (tagEnd != std::string_view::npos && valueKeyPos > tagEnd))
+    {
+        return false;
+    }
+
+    const size_t valueStart = valueKeyPos + 7;
+    const size_t valueEnd = xml.find('"', valueStart);
+    if (valueEnd == std::string_view::npos)
+    {
+        return false;
+    }
+
+    outValue = std::strtod(std::string(xml.substr(valueStart, valueEnd - valueStart)).c_str(), nullptr);
     return true;
 }
 
@@ -253,11 +292,71 @@ bool SlopeOverloadPlugin::stateSave(const clap_ostream_t *stream) noexcept
 
 bool SlopeOverloadPlugin::stateLoad(const clap_istream_t *stream) noexcept
 {
+    // clap_istream_t is forward-only (no peek/rewind), so buffer everything up front and then
+    // decide which format it's in.
+    std::vector<std::byte> buffer;
+    std::byte block[4096];
+    for (;;)
+    {
+        const int64_t readCount = stream->read(stream, block, sizeof(block));
+        if (readCount < 0)
+        {
+            return false;
+        }
+        if (readCount == 0)
+        {
+            break;
+        }
+        buffer.insert(buffer.end(), block, block + readCount);
+    }
+
+    if (buffer.size() >= 8 && readLE32(buffer.data()) == kJuceStateMagic)
+    {
+        return loadLegacyJuceState(buffer);
+    }
+
+    return loadNativeState(buffer);
+}
+
+bool SlopeOverloadPlugin::loadLegacyJuceState(const std::vector<std::byte> &buffer) noexcept
+{
+    const uint32_t declaredLength = readLE32(buffer.data() + 4);
+    const size_t available = buffer.size() - 8;
+    const size_t xmlLength = std::min<size_t>(declaredLength, available);
+    const std::string_view xml(reinterpret_cast<const char *>(buffer.data() + 8), xmlLength);
+
+    struct LegacyParam
+    {
+        ParamIndex index;
+        const char *id;
+    };
+
+    static constexpr LegacyParam kLegacyParams[] = {
+        {ParamIndex::Active, "active"}, {ParamIndex::InGain, "inGain"}, {ParamIndex::OutGain, "outGain"},
+        {ParamIndex::SRate, "sRate"},   {ParamIndex::AAFilt, "aaFilt"}, {ParamIndex::Speaker, "speaker"},
+    };
+
+    for (const auto &legacyParam : kLegacyParams)
+    {
+        double value = 0.0;
+        if (findLegacyParamValue(xml, legacyParam.id, value))
+        {
+            _params[legacyParam.index].setValue(value);
+        }
+    }
+
+    return true;
+}
+
+bool SlopeOverloadPlugin::loadNativeState(const std::vector<std::byte> &buffer) noexcept
+{
+    size_t offset = 0;
     uint32_t magic = 0;
     uint32_t version = 0;
     uint32_t count = 0;
-    if (!readAll(stream, magic) || magic != kStateMagic || !readAll(stream, version) ||
-        version != kStateVersion || !readAll(stream, count) || count != ParamCount)
+    if (!readFromBuffer(buffer, offset, magic) || magic != kStateMagic ||
+        !readFromBuffer(buffer, offset, version) || version != kStateVersion ||
+        !readFromBuffer(buffer, offset, count) || count != ParamCount)
     {
         return false;
     }
@@ -265,7 +364,7 @@ bool SlopeOverloadPlugin::stateLoad(const clap_istream_t *stream) noexcept
     for (auto &param : _params)
     {
         double value = 0.0;
-        if (!readAll(stream, value))
+        if (!readFromBuffer(buffer, offset, value))
         {
             return false;
         }

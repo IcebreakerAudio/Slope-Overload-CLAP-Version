@@ -1,6 +1,7 @@
 add_library(SlopeOverload-impl STATIC SlopeOverloadPlugin.cpp Parameter.cpp ParamAttachment.cpp)
 target_link_libraries(SlopeOverload-impl PUBLIC clap clap-helpers SlopeOverload-dsp SlopeOverload-ui)
 target_compile_definitions(SlopeOverload-impl PUBLIC SLOPEOVERLOAD_VERSION_STRING="${PROJECT_VERSION}")
+target_include_directories(SlopeOverload-impl PUBLIC "${CMAKE_SOURCE_DIR}/third_party/clap-wrapper/include")
 
 make_clapfirst_plugins(
         TARGET_NAME SlopeOverload
