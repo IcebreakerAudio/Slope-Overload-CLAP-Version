@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 Parameter::Parameter(clap_id id, std::string name, double min, double max, double defaultValue,
                        clap_param_info_flags flags, ParamFormat format,
@@ -85,6 +86,20 @@ bool Parameter::textToValue(const char *text, double *out) const noexcept
                 *out = static_cast<double>(i);
                 return true;
             }
+        }
+    }
+
+    if (_format == ParamFormat::Toggle)
+    {
+        if (std::strcmp(text, "On") == 0)
+        {
+            *out = _max;
+            return true;
+        }
+        if (std::strcmp(text, "Off") == 0)
+        {
+            *out = _min;
+            return true;
         }
     }
 
