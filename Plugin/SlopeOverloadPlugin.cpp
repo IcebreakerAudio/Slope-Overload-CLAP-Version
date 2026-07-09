@@ -30,6 +30,20 @@ constexpr uint32_t kStateVersion = 1;
 // Slope-Overload plugin's format, shared verbatim across its CLAP/VST3/AU/standalone exports).
 constexpr uint32_t kJuceStateMagic = 0x21324356;
 
+// clap_id values matching the JUCE-hash-based ids the original Slope-Overload plugin's
+// CLAP/VST3/AU exports derive from each parameter's string id ("active", "inGain", etc.) via
+// juce::String::hashCode() (result = result * 31 + charCode, uint32_t arithmetic). Reusing them
+// here lets automation lanes recorded against the old plugin re-attach to the right parameter
+// after swapping in this build. clap-wrapper's VST3 layer derives its own id from ours by
+// clearing the top bit (id & 0x7FFFFFFF, see Vst3Parameter::create) - exactly what JUCE's own
+// VST3/AU wrappers do too - so one id here keeps CLAP, VST3, and (presumably) AU in sync.
+constexpr clap_id kActiveId = 0xAB2F7F06;
+constexpr clap_id kInGainId = 0xB95CB244;
+constexpr clap_id kOutGainId = 0xBDFF17ED;
+constexpr clap_id kSRateId = 0x067B4FF3;
+constexpr clap_id kAAFiltId = 0xAAFE65CB;
+constexpr clap_id kSpeakerId = 0x88485FFF;
+
 constexpr double kScopeBufferSeconds = 0.5;
 
 template <typename T>
@@ -116,17 +130,17 @@ const clap_plugin_descriptor_t SlopeOverloadPlugin::descriptor = {
 SlopeOverloadPlugin::SlopeOverloadPlugin(const clap_host_t *host)
     : SlopeOverloadPluginBase(&descriptor, host),
       _params{
-          Parameter(ParamIndex::Active, "On/Off", 0.0, 1.0, 1.0,
+          Parameter(kActiveId, "On/Off", 0.0, 1.0, 1.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Toggle),
-          Parameter(ParamIndex::InGain, "Input", -60.0, 24.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
+          Parameter(kInGainId, "Input", -60.0, 24.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
                      ParamFormat::Decibels, {}, 1.5),
-          Parameter(ParamIndex::OutGain, "Output", -60.0, 12.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
+          Parameter(kOutGainId, "Output", -60.0, 12.0, 0.0, CLAP_PARAM_IS_AUTOMATABLE,
                      ParamFormat::Decibels, {}, 1.5),
-          Parameter(ParamIndex::SRate, "Sample Rate", 0.0, 15.0, 7.0,
+          Parameter(kSRateId, "Sample Rate", 0.0, 15.0, 7.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Integer),
-          Parameter(ParamIndex::AAFilt, "Pre-Filter", 0.0, 1.0, 1.0,
+          Parameter(kAAFiltId, "Pre-Filter", 0.0, 1.0, 1.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Toggle),
-          Parameter(ParamIndex::Speaker, "Speaker", 0.0, 2.0, 0.0,
+          Parameter(kSpeakerId, "Speaker", 0.0, 2.0, 0.0,
                      CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM | CLAP_PARAM_IS_AUTOMATABLE, ParamFormat::Choice,
                      std::vector<std::string>{"A", "B", "C"})},
       paramAttachments{
@@ -414,11 +428,11 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
 
     mixer.pushFirstSignal(output.data(), static_cast<int>(output.numFrames()));
 
-    dpcm.setAntiAliasing(findParam(ParamIndex::AAFilt)->value() >= 0.5);
-    dpcm.setSampleRateIndex(static_cast<int>(std::lround(findParam(ParamIndex::SRate)->value())));
+    dpcm.setAntiAliasing(_params[ParamIndex::AAFilt].value() >= 0.5);
+    dpcm.setSampleRateIndex(static_cast<int>(std::lround(_params[ParamIndex::SRate].value())));
 
-    const auto inGain = dbToGain(findParam(ParamIndex::InGain)->value());
-    const auto outGain = dbToGain(findParam(ParamIndex::OutGain)->value());
+    const auto inGain = dbToGain(_params[ParamIndex::InGain].value());
+    const auto outGain = dbToGain(_params[ParamIndex::OutGain].value());
 
     for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
     {
@@ -430,7 +444,7 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
 
     dpcm.process(output);
 
-    const auto speakerChoice = static_cast<int>(std::lround(findParam(ParamIndex::Speaker)->value())) - 1;
+    const auto speakerChoice = static_cast<int>(std::lround(_params[ParamIndex::Speaker].value())) - 1;
     speaker.setSpeaker(speakerChoice);
     speaker.process(output);
 
@@ -442,10 +456,10 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
         }
     }
 
-    mixer.setMix(findParam(ParamIndex::Active)->value() >= 0.5 ? 1.0f : 0.0f);
+    mixer.setMix(_params[ParamIndex::Active].value() >= 0.5 ? 1.0f : 0.0f);
     mixer.mixSecondSignal(output.data(), static_cast<int>(output.numFrames()));
 
-    if (findParam(ParamIndex::Active)->value() >= 0.5)
+    if (_params[ParamIndex::Active].value() >= 0.5)
     {
         scopeFifo.addToFifo(output);
     }
@@ -717,18 +731,24 @@ void SlopeOverloadPlugin::drainOutboundParamEvents(const clap_output_events_t *o
 
 const Parameter *SlopeOverloadPlugin::findParam(clap_id paramId) const noexcept
 {
-    if (paramId >= ParamCount)
+    for (const auto &param : _params)
     {
-        return nullptr;
+        if (param.id() == paramId)
+        {
+            return &param;
+        }
     }
-    return &_params[paramId];
+    return nullptr;
 }
 
 Parameter *SlopeOverloadPlugin::findParam(clap_id paramId) noexcept
 {
-    if (paramId >= ParamCount)
+    for (auto &param : _params)
     {
-        return nullptr;
+        if (param.id() == paramId)
+        {
+            return &param;
+        }
     }
-    return &_params[paramId];
+    return nullptr;
 }

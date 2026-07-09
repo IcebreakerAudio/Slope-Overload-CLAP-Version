@@ -23,3 +23,6 @@ cmake-build-relwithdebinfo/
 
 ## OS
 **/.DS_Store
+
+## Removed files stored locally
+_bin/
