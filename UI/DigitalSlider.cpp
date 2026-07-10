@@ -59,7 +59,7 @@ void DigitalSlider::draw(visage::Canvas &canvas)
 
 void DigitalSlider::mouseDown(const visage::MouseEvent &e)
 {
-    if (e.repeatClickCount() >= 2)
+    if (e.isAltDown() || e.repeatClickCount() >= 2)
     {
         param.beginGesture();
         param.setValue(param.defaultValue());
