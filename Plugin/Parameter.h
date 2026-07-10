@@ -44,5 +44,11 @@ private:
     ParamFormat _format;
     std::vector<std::string> _choiceLabels;
     double skewFactor;
+
+    // Written from the UI thread, read every audio block: must stay lock-free, or process() would
+    // start blocking on a mutex.
     std::atomic<double> _value;
+    static_assert(std::atomic<double>::is_always_lock_free,
+                  "std::atomic<double> is no longer lock-free on this target - Parameter::_value "
+                  "would make process() block on a mutex");
 };
