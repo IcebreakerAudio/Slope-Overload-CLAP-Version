@@ -39,7 +39,6 @@ private:
     static constexpr float bitDepth = 127.0f;
     static constexpr float bitFactor = bitDepth * 0.5f;
     static constexpr float threshold = 1.0f / bitFactor;
-    static constexpr float gateRatio = 50.0f;
     // IADSP::SecondOrderFilter's "resonance" is not a raw Q value: from its coefficient math
     // (p = 2*(1-resonance) plays the role of 1/Q), replicating the original's Butterworth-flat
     // Q = 1/sqrt(2) requires resonance = 1 - sqrt(2)/2, not 1/sqrt(2) itself.

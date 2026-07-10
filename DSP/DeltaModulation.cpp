@@ -3,6 +3,23 @@
 #include <algorithm>
 #include <cmath>
 
+namespace
+{
+// env is always >= 0 (it's an envelope-follower output), so this only ever needs the
+// non-negative-base case - no need for pow()'s general handling of negative bases/NaN/Inf. The
+// gate curve's exponent is a fixed 50, so exponentiation-by-squaring (50 = 32+16+2) replaces the
+// transcendental pow() call with 7 multiplies in this per-sample, oversampled-rate hot path.
+float gatePow50(float x) noexcept
+{
+    const auto x2 = x * x;
+    const auto x4 = x2 * x2;
+    const auto x8 = x4 * x4;
+    const auto x16 = x8 * x8;
+    const auto x32 = x16 * x16;
+    return x32 * x16 * x2;
+}
+}  // namespace
+
 void DeltaModulation::initialize(double sampleRate, int maxBlockSize, int numChannels)
 {
     int numStages = 0;
@@ -81,8 +98,12 @@ void DeltaModulation::reset()
 
 void DeltaModulation::setSampleRateIndex(int index) noexcept
 {
-    srIndex = std::clamp(index, 0, 15);
-    updateInternalRate();
+    const auto clamped = std::clamp(index, 0, 15);
+    if (clamped != srIndex)
+    {
+        srIndex = clamped;
+        updateInternalRate();
+    }
 }
 
 void DeltaModulation::setSystem(System newSystem) noexcept
@@ -151,7 +172,7 @@ float DeltaModulation::processSample(float inputValue, int channel) noexcept
     }
     clockPhase[static_cast<size_t>(channel)] += clockInc;
 
-    const auto gain = (env > threshold) ? 1.0f : std::pow(env * bitFactor, gateRatio);
+    const auto gain = (env > threshold) ? 1.0f : gatePow50(env * bitFactor);
     return heldOutput[static_cast<size_t>(channel)] * gain;
 }
 
