@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "FFTConvolver.h"
@@ -33,6 +34,7 @@ private:
         long flushRemaining = 0;     // > 0 while draining silence after being faded away from
     };
 
+    void startFade(int choice) noexcept;
     void finalizeFade() noexcept;
 
     std::array<ConvolverBank, numIRs> banks;  // banks[0] = HS200Close, banks[1] = VL1Edge
@@ -42,6 +44,7 @@ private:
     int fadeToChoice = -1;
     int fadeRemaining = 0;
     int fadeLength = 1;
+    std::optional<int> queuedChoice;  // latest choice requested while a fade was in progress
 
     std::vector<std::vector<float>> dryScratch, fromScratch, toScratch;  // [channel][maxBlockSize]
     std::vector<float> zeroScratch, dummyScratch;                       // shared across channels

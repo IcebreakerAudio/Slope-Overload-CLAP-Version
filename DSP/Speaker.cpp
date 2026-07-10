@@ -34,21 +34,11 @@ void Speaker::initialize(double sampleRate, int maxBlockSize, int numChannels)
     fadeFromChoice = -1;
     fadeToChoice = -1;
     fadeRemaining = 0;
+    queuedChoice.reset();
 }
 
-void Speaker::setSpeaker(int choice) noexcept
+void Speaker::startFade(int choice) noexcept
 {
-    const auto effectiveCurrent = fadeRemaining > 0 ? fadeToChoice : currentChoice;
-    if (choice == effectiveCurrent)
-    {
-        return;
-    }
-
-    if (fadeRemaining > 0)
-    {
-        finalizeFade();
-    }
-
     fadeFromChoice = currentChoice;
     fadeToChoice = choice;
     fadeRemaining = fadeLength;
@@ -63,6 +53,32 @@ void Speaker::setSpeaker(int choice) noexcept
     }
 }
 
+void Speaker::setSpeaker(int choice) noexcept
+{
+    // A fade is already in flight: don't interrupt it (that would jump straight to fadeToChoice,
+    // discarding the partially-blended signal and clicking). Queue the latest request instead and
+    // let the current fade finish naturally; finalizeFade() will chain into it below.
+    if (fadeRemaining > 0)
+    {
+        if (choice != fadeToChoice)
+        {
+            queuedChoice = choice;
+        }
+        else
+        {
+            queuedChoice.reset();
+        }
+        return;
+    }
+
+    if (choice == currentChoice)
+    {
+        return;
+    }
+
+    startFade(choice);
+}
+
 void Speaker::finalizeFade() noexcept
 {
     currentChoice = fadeToChoice;
@@ -74,6 +90,17 @@ void Speaker::finalizeFade() noexcept
     fadeFromChoice = -1;
     fadeToChoice = -1;
     fadeRemaining = 0;
+
+    if (queuedChoice && *queuedChoice != currentChoice)
+    {
+        const auto next = *queuedChoice;
+        queuedChoice.reset();
+        startFade(next);
+    }
+    else
+    {
+        queuedChoice.reset();
+    }
 }
 
 void Speaker::process(AudioBuffer &buffer) noexcept
