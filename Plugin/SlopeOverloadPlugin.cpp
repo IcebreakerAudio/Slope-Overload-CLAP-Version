@@ -521,8 +521,13 @@ bool SlopeOverloadPlugin::guiCreate(const char *, bool isFloating) noexcept
 
 void SlopeOverloadPlugin::guiDestroy() noexcept
 {
+    if (editor == nullptr)
+    {
+        return;
+    }
+
 #ifdef __linux__
-    if (editor && editor->window() && _host.canUsePosixFdSupport())
+    if (editor->window() && _host.canUsePosixFdSupport())
     {
         _host.posixFdSupportUnregister(editor->window()->posixFd());
     }
