@@ -7,6 +7,16 @@ project(SlopeOverload VERSION ${SLOPEOVERLOAD_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable Objective-C/C++ here, at the root, before any add_subdirectory() call. clap-wrapper's own
+# CMakeLists.txt also calls enable_language(OBJC OBJCXX), but that only takes effect within its own
+# subdirectory scope. Sibling directories like Plugin/ (added below) don't inherit it, so the
+# AUv2/standalone targets that make_clapfirst_plugins() creates there would fail to generate with
+# "CMAKE_OBJCXX_COMPILE_OBJECT not set" without enabling it here too.
+if (APPLE)
+    enable_language(OBJC)
+    enable_language(OBJCXX)
+endif()
+
 # Pin the MSVC runtime library here, at the root, before any add_subdirectory() call, so every
 # submodule (clap-wrapper's own libs, the CPM-fetched VST3 SDK, etc.) links against the same
 # runtime. Left to its own devices, clap-wrapper's CMakeLists.txt only sets this within its own
