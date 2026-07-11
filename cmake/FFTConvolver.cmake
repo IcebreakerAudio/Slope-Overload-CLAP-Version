@@ -14,3 +14,11 @@ target_include_directories(FFTConvolver PUBLIC
     $<BUILD_INTERFACE:${FFTCONVOLVER_DIR}>
     $<INSTALL_INTERFACE:include>
 )
+
+# FFTConvolver's own SSE auto-detection (__SSE__ / _M_IX86_FP) never fires under MSVC - that
+# compiler doesn't define either macro even on x64, where SSE2 is guaranteed baseline. Without
+# this, the MSVC build silently falls back to FFTConvolver's scalar complex-multiply path.
+# GCC/Clang already self-detect correctly and are left alone.
+if (MSVC)
+    target_compile_definitions(FFTConvolver PRIVATE FFTCONVOLVER_USE_SSE)
+endif()
