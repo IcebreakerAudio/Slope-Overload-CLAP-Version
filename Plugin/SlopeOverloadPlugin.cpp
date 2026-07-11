@@ -23,6 +23,8 @@ constexpr const char *kFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUG
 
 float dbToGain(double db) noexcept { return static_cast<float>(std::pow(10.0, db / 20.0)); }
 
+constexpr float kGainSmoothingMs = 15.0f;
+
 constexpr uint32_t kStateMagic = 0x31766f53;  // "Sov1"
 constexpr uint32_t kStateVersion = 1;
 
@@ -401,6 +403,14 @@ bool SlopeOverloadPlugin::activate(double sampleRate, uint32_t, uint32_t maxFram
         _host.latencyChanged();
     }
 
+    inGainSmoother.setSampleRate(sampleRate);
+    inGainSmoother.setSmoothingTime(kGainSmoothingMs);
+    inGainSmoother.setValue(dbToGain(_params[ParamIndex::InGain].value()), true);
+
+    outGainSmoother.setSampleRate(sampleRate);
+    outGainSmoother.setSmoothingTime(kGainSmoothingMs);
+    outGainSmoother.setValue(dbToGain(_params[ParamIndex::OutGain].value()), true);
+
     scopeFifo.setSize(std::max(1, static_cast<int>(sampleRate * kScopeBufferSeconds)));
 
     return true;
@@ -431,14 +441,15 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
     dpcm.setAntiAliasing(_params[ParamIndex::AAFilt].value() >= 0.5);
     dpcm.setSampleRateIndex(static_cast<int>(std::lround(_params[ParamIndex::SRate].value())));
 
-    const auto inGain = dbToGain(_params[ParamIndex::InGain].value());
-    const auto outGain = dbToGain(_params[ParamIndex::OutGain].value());
+    inGainSmoother.setValue(dbToGain(_params[ParamIndex::InGain].value()));
+    outGainSmoother.setValue(dbToGain(_params[ParamIndex::OutGain].value()));
 
-    for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
+    for (uint32_t s = 0; s < output.numFrames(); ++s)
     {
-        for (auto &s : output.channel(ch))
+        const auto gain = inGainSmoother.getNextValue();
+        for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
         {
-            s *= inGain;
+            output.channel(ch)[s] *= gain;
         }
     }
 
@@ -448,11 +459,12 @@ clap_process_status SlopeOverloadPlugin::process(const clap_process_t *process) 
     speaker.setSpeaker(speakerChoice);
     speaker.process(output);
 
-    for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
+    for (uint32_t s = 0; s < output.numFrames(); ++s)
     {
-        for (auto &s : output.channel(ch))
+        const auto gain = outGainSmoother.getNextValue();
+        for (uint32_t ch = 0; ch < output.numChannels(); ++ch)
         {
-            s *= outGain;
+            output.channel(ch)[s] *= gain;
         }
     }
 
