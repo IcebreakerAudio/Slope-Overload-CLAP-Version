@@ -32,6 +32,8 @@ This project was built primarily to learn CLAP and Visage, and to produce a smal
 | UI | JUCE | Visage |
 | DSP utilities | IADSP + JUCE | IADSP + FFTConvolver |
 
+Visage did have a bug when rendering certain SVG gradients, so this project uses a fork that fixes that bug. Hopefully this fix will be merged into the main Visage repository soon.
+
 ## Compatibility
 
 Despite the library swap, effort went into keeping this version a drop-in replacement where it matters most:
@@ -81,7 +83,7 @@ Personally I use [Visual Studio Code](https://code.visualstudio.com/) for workin
 
 ## Install
 
-Out of the box __Slope Overload__ supports CLAP, VST3, AU (Apple-only), and Standalone for Windows, MacOS and Linux. LV2 is intentionally not included in this version — `clap-wrapper` doesn't produce LV2, and the original project only shipped it because JUCE made it free to add.
+Out of the box __Slope Overload__ supports CLAP, VST3, and AU (Apple-only). A pre-built standalone version is not supplied, but can be built from source if you want it.
 
 Note that Apple have a very heavy-handed security system that will probably block the plugins from being used. You will need to update the MacOS security features to either allow unsigned files, or to exclude the plugin files (the method for how to do this changes now and again, so Google for the latest technique).
 
