@@ -16,8 +16,13 @@
 #include "Speaker.h"
 #include "SlopeOverloadEditor.h"
 
+// AU hosts (e.g. Logic Pro's out-of-process AUHostingService) call some CLAP-wrapper-dispatched
+// methods from an XPC queue rather than the real main thread, which clap-helpers' main-thread
+// checks can't distinguish from genuine host misbehaviour. MisbehaviourHandler::Ignore keeps all
+// of clap-helpers' contract logging (CLAP_LOG_HOST_MISBEHAVING) active but stops it from calling
+// std::terminate() on a false positive - see clap-helpers/plugin.hxx hostMisbehaving().
 using SlopeOverloadPluginBase =
-    clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate, clap::helpers::CheckingLevel::Maximal>;
+    clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Ignore, clap::helpers::CheckingLevel::Maximal>;
 
 class SlopeOverloadPlugin : public SlopeOverloadPluginBase
 {
