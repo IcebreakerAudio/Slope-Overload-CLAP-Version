@@ -14,13 +14,17 @@ Because of how the encoding works, curves in the waveform get distorted into str
 
 ## The Plugin
 
-This is a ground-up rebuild of the [original JUCE-based Slope Overload](https://github.com/IcebreakerAudio/Slope-Overload) on a native CLAP stack, with no JUCE anywhere in the dependency tree.
+![Slope Overload](examples/Screenshot.png)
 
+This is a ground-up rebuild of the [original JUCE-based Slope Overload](https://github.com/IcebreakerAudio/Slope-Overload) on a native CLAP stack, with no JUCE anywhere in the dependency tree.
+ 
 The UI was built using [Visage](https://github.com/VitalAudio/visage) and uses 100% vector graphics so it can be resized freely.
 
 In order to make the effect more usable, pre and post filters were added, as well as a gate which stops playback if the input audio is below the encoding threshold (without this you get a constant tone at the nyquist limit which is not unlike tinnitus).
 
 There are also two speaker impulse responses for added retro lofi nostalgia.
+
+You can watch a little video example [here](https://youtu.be/7v1ObxQ0_Qg).
 
 ## Library Replacements
 
@@ -84,6 +88,8 @@ Personally I use [Visual Studio Code](https://code.visualstudio.com/) for workin
 ## Install
 
 Out of the box __Slope Overload__ supports CLAP, VST3, and AU (Apple-only). A pre-built standalone version is not supplied, but can be built from source if you want it.
+
+Pre-built binaries are available [here](https://github.com/IcebreakerAudio/Slope-Overload-CLAP-Version/releases). You just need to place them in the correct directory (info is available on the release page).
 
 Note that Apple have a very heavy-handed security system that will probably block the plugins from being used. You will need to update the MacOS security features to either allow unsigned files, or to exclude the plugin files (the method for how to do this changes now and again, so Google for the latest technique).
 
