@@ -20,9 +20,13 @@ build/
 cmake-build-debug/
 cmake-build-release/
 cmake-build-relwithdebinfo/
+CLAUDE.md
 
 ## OS
 **/.DS_Store
 
 ## Removed files stored locally
 _bin/
+
+## Raw wav files
+*.wav
