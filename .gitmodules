@@ -6,7 +6,7 @@
 	url = https://github.com/free-audio/clap-helpers
 [submodule "third_party/clap-wrapper"]
 	path = third_party/clap-wrapper
-	url = https://github.com/free-audio/clap-wrapper
+	url = https://github.com/IcebreakerAudio/clap-wrapper.git
 [submodule "third_party/IADSP"]
 	path = third_party/IADSP
 	url = https://github.com/IcebreakerAudio/IADSP
