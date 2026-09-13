@@ -7,11 +7,11 @@ make_clapfirst_plugins(
         TARGET_NAME SlopeOverload
         IMPL_TARGET SlopeOverload-impl
 
-        OUTPUT_NAME "Slope Overload"
+        OUTPUT_NAME "${PRODUCT_NAME}"
 
         ENTRY_SOURCE "SlopeOverloadPlugin_entry.cpp"
 
-        BUNDLE_IDENTIFIER "com.icebreakeraudio.slopeoverload"
+        BUNDLE_IDENTIFIER "${BUNDLE_ID}"
         BUNDLE_VERSION ${PROJECT_VERSION}
 
         COPY_AFTER_BUILD FALSE
@@ -20,13 +20,13 @@ make_clapfirst_plugins(
 
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/SlopeOverload_assets
 
-        AUV2_MANUFACTURER_NAME "Icebreaker Audio"
+        AUV2_MANUFACTURER_NAME "${COMPANY_NAME}"
         AUV2_MANUFACTURER_CODE "IceB"
         AUV2_SUBTYPE_CODE "IASO"
         AUV2_INSTRUMENT_TYPE "aufx"
 
         STANDALONE_CONFIGURATIONS
-        standalone "Slope Overload" com.icebreakeraudio.slopeoverload
+        standalone "${PRODUCT_NAME}" "${BUNDLE_ID}"
 )
 
 if (WIN32)

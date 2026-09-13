@@ -4,6 +4,13 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" SLOPEOVERLOAD_VERSION LIMIT_C
 
 project(SlopeOverload VERSION ${SLOPEOVERLOAD_VERSION} LANGUAGES C CXX)
 
+# Single source of truth for product identity, consumed by Plugin/CMakeLists.txt's
+# make_clapfirst_plugins() call and, via the configure_file() calls at the bottom of this file, by both
+# installer scripts under Installer/ — change a value here, not in either place that consumes it.
+set(PRODUCT_NAME "Slope Overload")
+set(COMPANY_NAME "Icebreaker Audio")
+set(BUNDLE_ID "com.icebreakeraudio.slopeoverload")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -49,3 +56,16 @@ include(cmake/WindowsVersionInfo.cmake)
 add_subdirectory(DSP)
 add_subdirectory(UI)
 add_subdirectory(Plugin)
+
+# Expand PRODUCT_NAME/COMPANY_NAME/BUNDLE_ID and PROJECT_VERSION above into files the installer scripts
+# under Installer/ read directly, so neither script hand-maintains its own copy of these values.
+configure_file(
+        "${CMAKE_SOURCE_DIR}/Installer/ProductInfo.iss.in"
+        "${CMAKE_BINARY_DIR}/Installer/ProductInfo.iss"
+        @ONLY
+)
+configure_file(
+        "${CMAKE_SOURCE_DIR}/Installer/ProductInfo.sh.in"
+        "${CMAKE_BINARY_DIR}/Installer/ProductInfo.sh"
+        @ONLY
+)
